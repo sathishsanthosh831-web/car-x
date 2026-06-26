@@ -1,0 +1,1069 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Car Chase - Multiplayer</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0a0a0f; color: #fff; font-family: 'Courier New', monospace; overflow: hidden; height: 100vh; width: 100vw; }
+
+  #lobby {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    height: 100vh; gap: 16px; padding: 20px;
+    background: radial-gradient(ellipse at center, #1a1a2e 0%, #0a0a0f 100%);
+  }
+
+  .game-title {
+    font-size: clamp(28px, 6vw, 52px);
+    font-weight: 900; letter-spacing: 4px; text-transform: uppercase;
+    color: #ff4444;
+    text-shadow: 0 0 30px #ff444488, 0 0 60px #ff444444;
+    margin-bottom: 8px;
+  }
+  .subtitle { font-size: 13px; color: #666; letter-spacing: 3px; margin-bottom: 24px; }
+
+  .card {
+    background: #111122; border: 1px solid #222244;
+    border-radius: 12px; padding: 24px; width: 100%; max-width: 360px;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .card-title { font-size: 11px; letter-spacing: 3px; color: #ff4444; text-transform: uppercase; margin-bottom: 4px; }
+
+  input {
+    background: #0a0a1a; border: 1px solid #333355; border-radius: 8px;
+    color: #fff; font-family: 'Courier New', monospace; font-size: 18px;
+    letter-spacing: 6px; padding: 12px 16px; width: 100%; text-align: center;
+    text-transform: uppercase; outline: none;
+  }
+  input:focus { border-color: #ff4444; box-shadow: 0 0 0 2px #ff444422; }
+  input::placeholder { letter-spacing: 2px; font-size: 13px; color: #444; }
+
+  button {
+    border: none; border-radius: 8px; cursor: pointer;
+    font-family: 'Courier New', monospace; font-weight: 700;
+    letter-spacing: 2px; padding: 14px 20px; text-transform: uppercase;
+    transition: all 0.15s; font-size: 13px; width: 100%;
+  }
+  .btn-red { background: #ff4444; color: #fff; }
+  .btn-red:hover { background: #ff6666; transform: translateY(-1px); }
+  .btn-blue { background: #4444ff; color: #fff; }
+  .btn-blue:hover { background: #6666ff; transform: translateY(-1px); }
+  .btn-green { background: #44bb44; color: #fff; }
+  .btn-green:hover { background: #66dd66; transform: translateY(-1px); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; transform: none !important; }
+
+  #status-msg {
+    font-size: 12px; color: #888; text-align: center; min-height: 18px;
+    letter-spacing: 1px;
+  }
+  #status-msg.error { color: #ff6666; }
+  #status-msg.success { color: #44ff88; }
+
+  #gameCanvas { display: none; position: fixed; top: 0; left: 0; }
+
+  #hud {
+    display: none; position: fixed; top: 0; left: 0; right: 0;
+    pointer-events: none; z-index: 10;
+  }
+  .hud-top {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    padding: 12px; gap: 8px;
+  }
+  .hud-card {
+    background: rgba(0,0,0,0.75); border-radius: 10px; padding: 10px 14px;
+    backdrop-filter: blur(6px); border: 1px solid rgba(255,255,255,0.08);
+    min-width: 120px;
+  }
+  .hud-label { font-size: 9px; letter-spacing: 2px; color: #888; text-transform: uppercase; }
+  .hud-val { font-size: 20px; font-weight: 700; margin-top: 2px; }
+  .hp-bar { height: 5px; border-radius: 3px; background: #222; margin-top: 6px; overflow: hidden; }
+  .hp-fill { height: 100%; border-radius: 3px; transition: width 0.2s, background 0.2s; }
+
+  #checkpoints-hud {
+    position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 8px; z-index: 10; pointer-events: none;
+  }
+  .cp-dot {
+    width: 14px; height: 14px; border-radius: 50%;
+    border: 2px solid #555; background: #111;
+    transition: all 0.3s;
+  }
+  .cp-dot.done { background: #44ff88; border-color: #44ff88; box-shadow: 0 0 8px #44ff88; }
+  .cp-dot.active { border-color: #ffff44; box-shadow: 0 0 8px #ffff44; animation: pulse 1s infinite; }
+
+  @keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.3)} }
+
+  #minimap {
+    position: fixed; bottom: 80px; right: 12px; z-index: 10;
+    background: rgba(0,0,0,0.7); border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.1); overflow: hidden;
+  }
+
+  #controls {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 10;
+    display: none; padding: 8px; gap: 8px;
+  }
+  .dpad {
+    display: grid; grid-template-columns: 44px 44px 44px;
+    grid-template-rows: 44px 44px 44px; gap: 3px;
+  }
+  .ctrl-btn {
+    background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 8px; color: #fff; font-size: 18px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    -webkit-tap-highlight-color: transparent; user-select: none;
+    transition: background 0.1s;
+    pointer-events: all;
+  }
+  .ctrl-btn:active, .ctrl-btn.pressed { background: rgba(255,255,255,0.3); }
+  .boost-btn {
+    width: 72px; height: 72px; border-radius: 50%;
+    background: rgba(255,200,0,0.2); border: 2px solid #ffcc00;
+    font-size: 24px; align-self: flex-end;
+    pointer-events: all;
+  }
+  .boost-btn.cooldown { background: rgba(100,100,100,0.2); border-color: #444; }
+
+  #overlay {
+    display: none; position: fixed; inset: 0; z-index: 100;
+    background: rgba(0,0,0,0.85); backdrop-filter: blur(8px);
+    flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+  }
+  .overlay-title { font-size: clamp(24px,5vw,42px); font-weight: 900; letter-spacing: 4px; }
+  .overlay-sub { font-size: 14px; color: #888; letter-spacing: 2px; }
+
+  #mic-btn {
+    position: fixed; bottom: 8px; right: 8px; z-index: 20;
+    width: 48px; height: 48px; border-radius: 50%;
+    background: rgba(0,0,0,0.7); border: 1px solid #444;
+    font-size: 20px; cursor: pointer; pointer-events: all;
+    display: none; align-items: center; justify-content: center;
+    transition: all 0.2s;
+  }
+  #mic-btn.active { border-color: #44ff88; background: rgba(68,255,136,0.15); }
+  #mic-btn.muted { border-color: #ff4444; }
+
+  #room-display {
+    background: #0a0a1a; border: 1px solid #333355; border-radius: 8px;
+    padding: 12px; text-align: center;
+  }
+  .room-id { font-size: 28px; letter-spacing: 8px; color: #ffcc00; font-weight: 700; }
+  .room-hint { font-size: 11px; color: #555; margin-top: 4px; letter-spacing: 1px; }
+
+  .divider { border: none; border-top: 1px solid #222233; margin: 4px 0; }
+
+  #waiting-dots::after {
+    content: ''; animation: dots 1.5s infinite;
+  }
+  @keyframes dots {
+    0%{content:'.'} 33%{content:'..'} 66%{content:'...'} 100%{content:''}
+  }
+
+  #speed-indicator {
+    position: fixed; bottom: 80px; left: 12px; z-index: 10;
+    background: rgba(0,0,0,0.7); border-radius: 8px; padding: 8px 12px;
+    border: 1px solid rgba(255,255,255,0.08);
+    font-size: 11px; color: #888; letter-spacing: 1px;
+    pointer-events: none;
+  }
+  #speed-val { font-size: 22px; font-weight: 700; color: #fff; display: block; }
+</style>
+</head>
+<body>
+
+<!-- LOBBY -->
+<div id="lobby">
+  <div class="game-title">🚗 CAR CHASE</div>
+  <div class="subtitle">2 PLAYER • OPEN WORLD • LIVE VOICE</div>
+
+  <div class="card">
+    <div class="card-title">⚡ Create Room</div>
+    <button class="btn-red" onclick="createRoom()">CREATE NEW ROOM</button>
+  </div>
+
+  <div class="card">
+    <div class="card-title">🔗 Join Room</div>
+    <input id="roomInput" type="text" maxlength="6" placeholder="ENTER ROOM ID" oninput="this.value=this.value.toUpperCase()">
+    <button class="btn-blue" onclick="joinRoom()">JOIN ROOM</button>
+  </div>
+
+  <div id="status-msg"></div>
+</div>
+
+<!-- WAITING ROOM -->
+<div id="waitingRoom" style="display:none; flex-direction:column; align-items:center; justify-content:center; height:100vh; gap:16px; padding:20px; background:radial-gradient(ellipse at center, #1a1a2e 0%, #0a0a0f 100%);">
+  <div class="game-title" style="font-size:28px;">ROOM READY</div>
+  <div class="card" style="max-width:360px;width:100%;">
+    <div class="card-title">Your Room ID</div>
+    <div id="room-display">
+      <div class="room-id" id="roomIdDisplay">------</div>
+      <div class="room-hint">Share this ID with your friend</div>
+    </div>
+    <hr class="divider">
+    <div id="roleDisplay" style="text-align:center; font-size:13px; color:#aaa; letter-spacing:2px;"></div>
+    <div id="waitStatus" style="text-align:center; font-size:12px; color:#555; margin-top:4px;">
+      Waiting for opponent<span id="waiting-dots"></span>
+    </div>
+    <button class="btn-green" id="readyBtn" onclick="setReady()" disabled>⏳ WAITING...</button>
+  </div>
+  <button class="btn-blue" onclick="copyRoomId()" style="max-width:360px;">📋 COPY ROOM ID</button>
+</div>
+
+<!-- GAME CANVAS -->
+<canvas id="gameCanvas"></canvas>
+
+<!-- HUD -->
+<div id="hud">
+  <div class="hud-top">
+    <div class="hud-card">
+      <div class="hud-label">🚗 You</div>
+      <div class="hud-val" id="myHpVal">100</div>
+      <div class="hp-bar"><div class="hp-fill" id="myHpBar" style="width:100%;background:#44ff88;"></div></div>
+    </div>
+    <div style="text-align:center;">
+      <div style="font-size:11px;color:#666;letter-spacing:2px;">OBJECTIVE</div>
+      <div id="objText" style="font-size:12px;color:#ffcc00;margin-top:4px;letter-spacing:1px;"></div>
+    </div>
+    <div class="hud-card" style="text-align:right;">
+      <div class="hud-label">🚔 Enemy</div>
+      <div class="hud-val" id="enemyHpVal">100</div>
+      <div class="hp-bar"><div class="hp-fill" id="enemyHpBar" style="width:100%;background:#ff4444;"></div></div>
+    </div>
+  </div>
+</div>
+
+<div id="checkpoints-hud"></div>
+
+<canvas id="minimap" width="100" height="100"></canvas>
+
+<div id="speed-indicator">
+  <span id="speed-val">0</span>
+  KM/H
+</div>
+
+<!-- TOUCH CONTROLS -->
+<div id="controls" style="display:none; position:fixed; bottom:0; left:0; right:0; z-index:10; padding:8px; pointer-events:none;">
+  <div style="display:flex; justify-content:space-between; align-items:flex-end; pointer-events:all;">
+    <div class="dpad">
+      <div></div>
+      <div class="ctrl-btn" id="btn-up" ontouchstart="touchStart('up')" ontouchend="touchEnd('up')">↑</div>
+      <div></div>
+      <div class="ctrl-btn" id="btn-left" ontouchstart="touchStart('left')" ontouchend="touchEnd('left')">←</div>
+      <div class="ctrl-btn" id="btn-down" ontouchstart="touchStart('down')" ontouchend="touchEnd('down')">↓</div>
+      <div class="ctrl-btn" id="btn-right" ontouchstart="touchStart('right')" ontouchend="touchEnd('right')">→</div>
+      <div></div><div></div><div></div>
+    </div>
+    <div class="ctrl-btn boost-btn" id="boostBtn" ontouchstart="activateBoost()" style="pointer-events:all;">⚡</div>
+  </div>
+</div>
+
+<!-- MIC BUTTON -->
+<div id="mic-btn" onclick="toggleMic()">🎤</div>
+
+<!-- OVERLAY (game over / waiting) -->
+<div id="overlay">
+  <div class="overlay-title" id="overlayTitle"></div>
+  <div class="overlay-sub" id="overlaySub"></div>
+  <button class="btn-red" onclick="backToLobby()" style="max-width:240px;margin-top:8px;">BACK TO LOBBY</button>
+</div>
+
+<script>
+// ============================================================
+// CONFIG - UPDATE THIS AFTER DEPLOYING BACKEND
+// ============================================================
+const SERVER_URL = 'wss://car-x-production.up.railway.app';
+// During local testing: 'ws://localhost:3000'
+// ============================================================
+
+let ws = null;
+let myRole = null; // 'human' or 'police'
+let myPlayerId = null;
+let roomId = null;
+let gameStarted = false;
+let opponentConnected = false;
+
+// WebRTC Voice
+let peerConnection = null;
+let localStream = null;
+let micEnabled = false;
+
+const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
+
+// ============================================================
+// CONNECTION
+// ============================================================
+function connectWS() {
+  return new Promise((resolve, reject) => {
+    if (ws && ws.readyState === WebSocket.OPEN) { resolve(); return; }
+    ws = new WebSocket(SERVER_URL);
+    ws.onopen = () => resolve();
+    ws.onerror = () => reject(new Error('Cannot connect to server'));
+    ws.onmessage = handleMessage;
+    ws.onclose = () => {
+      if (gameStarted) showOverlay('DISCONNECTED', 'Connection lost', '#ff4444');
+    };
+  });
+}
+
+function setStatus(msg, type = '') {
+  const el = document.getElementById('status-msg');
+  el.textContent = msg;
+  el.className = type;
+}
+
+async function createRoom() {
+  setStatus('Connecting...', '');
+  try {
+    await connectWS();
+    ws.send(JSON.stringify({ type: 'CREATE_ROOM' }));
+  } catch(e) { setStatus('Server offline. Check SERVER_URL in code.', 'error'); }
+}
+
+async function joinRoom() {
+  const id = document.getElementById('roomInput').value.trim().toUpperCase();
+  if (id.length < 4) { setStatus('Enter a valid Room ID', 'error'); return; }
+  setStatus('Connecting...', '');
+  try {
+    await connectWS();
+    ws.send(JSON.stringify({ type: 'JOIN_ROOM', roomId: id }));
+  } catch(e) { setStatus('Server offline. Check SERVER_URL in code.', 'error'); }
+}
+
+function copyRoomId() {
+  navigator.clipboard.writeText(roomId).then(() => {
+    setStatus('Room ID copied!', 'success');
+  }).catch(() => {
+    prompt('Copy this Room ID:', roomId);
+  });
+}
+
+// ============================================================
+// MESSAGE HANDLER
+// ============================================================
+function handleMessage(event) {
+  const data = JSON.parse(event.data);
+
+  switch(data.type) {
+    case 'ROOM_CREATED':
+      myPlayerId = data.playerId;
+      myRole = data.role;
+      roomId = data.roomId;
+      showWaitingRoom();
+      break;
+
+    case 'ROOM_JOINED':
+      myPlayerId = data.playerId;
+      myRole = data.role;
+      roomId = data.roomId;
+      showWaitingRoom();
+      opponentConnected = true;
+      enableReady();
+      break;
+
+    case 'PLAYER_JOINED':
+      opponentConnected = true;
+      enableReady();
+      break;
+
+    case 'PLAYER_READY':
+      document.getElementById('waitStatus').textContent = 'Opponent is ready! ✓';
+      break;
+
+    case 'GAME_START':
+      startGame();
+      break;
+
+    case 'GAME_STATE':
+      if (data.playerId !== myPlayerId) updateOpponentState(data.state);
+      break;
+
+    case 'COLLISION':
+      handleCollision(data.data);
+      break;
+
+    case 'CHECKPOINT':
+      if (myRole === 'human' && data.playerId === myPlayerId) {
+        checkpointReached(data.checkpointId);
+      } else if (myRole === 'police') {
+        updateOpponentCheckpoint(data.checkpointId);
+      }
+      break;
+
+    case 'GAME_OVER':
+      endGame(data.winner, data.reason);
+      break;
+
+    case 'PLAYER_DISCONNECTED':
+      if (gameStarted) showOverlay('OPPONENT LEFT', 'They disconnected', '#ff4444');
+      break;
+
+    case 'ERROR':
+      setStatus(data.message, 'error');
+      break;
+
+    // WebRTC signaling
+    case 'WEBRTC_OFFER':
+      handleOffer(data.offer);
+      break;
+    case 'WEBRTC_ANSWER':
+      handleAnswer(data.answer);
+      break;
+    case 'WEBRTC_ICE':
+      handleIce(data.candidate);
+      break;
+  }
+}
+
+// ============================================================
+// WAITING ROOM
+// ============================================================
+function showWaitingRoom() {
+  document.getElementById('lobby').style.display = 'none';
+  document.getElementById('waitingRoom').style.display = 'flex';
+  document.getElementById('roomIdDisplay').textContent = roomId;
+  document.getElementById('roleDisplay').textContent =
+    myRole === 'human' ? '🚗 YOU ARE: HUMAN CAR (Escape!)' : '🚔 YOU ARE: POLICE CAR (Catch them!)';
+}
+
+function enableReady() {
+  const btn = document.getElementById('readyBtn');
+  btn.disabled = false;
+  btn.textContent = '✅ I\'M READY!';
+  btn.className = 'btn-green';
+  document.getElementById('waitStatus').textContent = 'Opponent joined! Tap Ready when set.';
+}
+
+function setReady() {
+  document.getElementById('readyBtn').disabled = true;
+  document.getElementById('readyBtn').textContent = '⏳ Waiting for opponent...';
+  ws.send(JSON.stringify({ type: 'PLAYER_READY' }));
+  initVoiceChat();
+}
+
+// ============================================================
+// GAME ENGINE
+// ============================================================
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// World size
+const WORLD_W = 3200;
+const WORLD_H = 3200;
+const TILE = 64;
+
+// Camera
+let camX = 0, camY = 0;
+
+// Players
+let myPlayer, opponent;
+
+// Checkpoints (for human)
+let checkpoints = [];
+let cpReached = 0;
+const TOTAL_CP = 5;
+
+// Roads / buildings (procedural)
+let roads = [];
+let buildings = [];
+let trees = [];
+
+// Controls
+const keys = {};
+
+function initWorld() {
+  // Generate roads grid
+  roads = [];
+  for (let x = 0; x < WORLD_W; x += 320) {
+    roads.push({ x, y: 0, w: 64, h: WORLD_H, dir: 'v' });
+  }
+  for (let y = 0; y < WORLD_H; y += 320) {
+    roads.push({ x: 0, y, w: WORLD_W, h: 64, dir: 'h' });
+  }
+
+  // Buildings in blocks
+  buildings = [];
+  const rng = seededRng(42);
+  for (let bx = 0; bx < WORLD_W; bx += 320) {
+    for (let by = 0; by < WORLD_H; by += 320) {
+      const numB = 2 + Math.floor(rng() * 3);
+      for (let i = 0; i < numB; i++) {
+        const bw = 60 + Math.floor(rng() * 80);
+        const bh = 60 + Math.floor(rng() * 80);
+        const bpx = bx + 70 + Math.floor(rng() * (200 - bw));
+        const bpy = by + 70 + Math.floor(rng() * (200 - bh));
+        const hue = Math.floor(rng() * 40);
+        buildings.push({ x: bpx, y: bpy, w: bw, h: bh, hue });
+      }
+    }
+  }
+
+  // Trees on edges of roads
+  trees = [];
+  for (let x = 64; x < WORLD_W - 64; x += 128) {
+    trees.push({ x: x + 32, y: 34 });
+    trees.push({ x: x + 32, y: WORLD_H - 34 });
+  }
+
+  // Checkpoints spread across world
+  const cpPositions = [
+    { x: 400, y: 400 },
+    { x: WORLD_W - 400, y: 400 },
+    { x: WORLD_W / 2, y: WORLD_H / 2 },
+    { x: 400, y: WORLD_H - 400 },
+    { x: WORLD_W - 400, y: WORLD_H - 400 },
+  ];
+  checkpoints = cpPositions.map((p, i) => ({ ...p, id: i, reached: false }));
+
+  // Setup checkpoint HUD
+  const cpHud = document.getElementById('checkpoints-hud');
+  cpHud.innerHTML = '';
+  checkpoints.forEach((_, i) => {
+    const dot = document.createElement('div');
+    dot.className = 'cp-dot' + (i === 0 ? ' active' : '');
+    dot.id = `cp-${i}`;
+    cpHud.appendChild(dot);
+  });
+}
+
+function seededRng(seed) {
+  let s = seed;
+  return () => { s = (s * 1664525 + 1013904223) & 0xffffffff; return (s >>> 0) / 0xffffffff; };
+}
+
+function isOnRoad(x, y) {
+  for (const r of roads) {
+    if (x > r.x && x < r.x + r.w && y > r.y && y < r.y + r.h) return true;
+  }
+  return false;
+}
+
+function collidesBuilding(x, y, w, h) {
+  for (const b of buildings) {
+    if (x < b.x + b.w && x + w > b.x && y < b.y + b.h && y + h > b.y) return true;
+  }
+  return false;
+}
+
+let myState = {}, oppState = {};
+
+function startGame() {
+  document.getElementById('waitingRoom').style.display = 'none';
+  document.getElementById('lobby').style.display = 'none';
+
+  canvas.style.display = 'block';
+  document.getElementById('hud').style.display = 'block';
+  document.getElementById('checkpoints-hud').style.display = 'flex';
+  document.getElementById('minimap').style.display = 'block';
+  document.getElementById('speed-indicator').style.display = 'block';
+  document.getElementById('mic-btn').style.display = 'flex';
+
+  if ('ontouchstart' in window) {
+    document.getElementById('controls').style.display = 'flex';
+  }
+
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+
+  gameStarted = true;
+
+  initWorld();
+
+  const spawnH = { x: 500, y: 500 };
+  const spawnP = { x: 700, y: 500 };
+
+  myState = {
+    x: myRole === 'human' ? spawnH.x : spawnP.x,
+    y: myRole === 'human' ? spawnH.y : spawnP.y,
+    angle: 0, speed: 0, hp: 100,
+    boosting: false, boostCool: 0,
+    vx: 0, vy: 0,
+  };
+  oppState = {
+    x: myRole === 'human' ? spawnP.x : spawnH.x,
+    y: myRole === 'human' ? spawnP.y : spawnH.y,
+    angle: 0, speed: 0, hp: 100,
+    boosting: false,
+  };
+
+  cpReached = 0;
+
+  if (myRole === 'human') {
+    document.getElementById('objText').textContent = 'REACH ALL CHECKPOINTS';
+  } else {
+    document.getElementById('objText').textContent = 'DESTROY HUMAN CAR';
+  }
+
+  window.addEventListener('keydown', e => { keys[e.key] = true; if(['ArrowUp','ArrowDown',' '].includes(e.key)) e.preventDefault(); });
+  window.addEventListener('keyup', e => { keys[e.key] = false; });
+  window.addEventListener('resize', () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; });
+
+  lastTime = performance.now();
+  requestAnimationFrame(gameLoop);
+}
+
+let lastTime = 0;
+let sendTimer = 0;
+
+function gameLoop(now) {
+  if (!gameStarted) return;
+  const dt = Math.min((now - lastTime) / 1000, 0.05);
+  lastTime = now;
+
+  update(dt);
+  render();
+
+  sendTimer += dt;
+  if (sendTimer > 0.05) { // 20hz
+    sendTimer = 0;
+    ws && ws.readyState === WebSocket.OPEN && ws.send(JSON.stringify({
+      type: 'GAME_STATE',
+      state: {
+        x: myState.x, y: myState.y,
+        angle: myState.angle, speed: myState.speed,
+        hp: myState.hp, boosting: myState.boosting,
+      }
+    }));
+  }
+
+  requestAnimationFrame(gameLoop);
+}
+
+const CAR_W = 28, CAR_H = 48;
+const MAX_SPEED = 220;
+const MAX_BOOST = 380;
+const ACCEL = 260;
+const BRAKE = 340;
+const FRICTION = 180;
+const TURN_SPEED = 2.4;
+const BOOST_DUR = 2.5;
+const BOOST_COOLDOWN = 8;
+
+let boostTimer = 0;
+let boostCoolTimer = 0;
+
+function update(dt) {
+  const up    = keys['ArrowUp']    || keys['w'] || keys['W'] || touchKeys.up;
+  const down  = keys['ArrowDown']  || keys['s'] || keys['S'] || touchKeys.down;
+  const left  = keys['ArrowLeft']  || keys['a'] || keys['A'] || touchKeys.left;
+  const right = keys['ArrowRight'] || keys['d'] || keys['D'] || touchKeys.right;
+  const boost = keys[' '] || keys['Shift'] || touchKeys.boost;
+
+  // Boost logic
+  if (boostTimer > 0) {
+    boostTimer -= dt;
+    myState.boosting = true;
+  } else {
+    myState.boosting = false;
+  }
+  if (boostCoolTimer > 0) boostCoolTimer -= dt;
+
+  if (boost && boostCoolTimer <= 0 && boostTimer <= 0) {
+    boostTimer = BOOST_DUR;
+    boostCoolTimer = BOOST_COOLDOWN;
+    updateBoostBtn();
+  }
+
+  const maxSpd = myState.boosting ? MAX_BOOST : MAX_SPEED;
+
+  if (up) myState.speed = Math.min(myState.speed + ACCEL * dt, maxSpd);
+  else if (down) myState.speed = Math.max(myState.speed - BRAKE * dt, -maxSpd * 0.4);
+  else {
+    if (myState.speed > 0) myState.speed = Math.max(0, myState.speed - FRICTION * dt);
+    else myState.speed = Math.min(0, myState.speed + FRICTION * dt);
+  }
+
+  if (Math.abs(myState.speed) > 10) {
+    const dir = myState.speed > 0 ? 1 : -1;
+    if (left)  myState.angle -= TURN_SPEED * dt * dir * (Math.abs(myState.speed) / MAX_SPEED);
+    if (right) myState.angle += TURN_SPEED * dt * dir * (Math.abs(myState.speed) / MAX_SPEED);
+  }
+
+  const nx = myState.x + Math.sin(myState.angle) * myState.speed * dt;
+  const ny = myState.y - Math.cos(myState.angle) * myState.speed * dt;
+
+  if (nx > 0 && nx < WORLD_W && !collidesBuilding(nx - CAR_W/2, myState.y - CAR_H/2, CAR_W, CAR_H)) myState.x = nx;
+  else myState.speed *= -0.3;
+  if (ny > 0 && ny < WORLD_H && !collidesBuilding(myState.x - CAR_W/2, ny - CAR_H/2, CAR_W, CAR_H)) myState.y = ny;
+  else myState.speed *= -0.3;
+
+  myState.x = Math.max(30, Math.min(WORLD_W - 30, myState.x));
+  myState.y = Math.max(30, Math.min(WORLD_H - 30, myState.y));
+
+  // Camera
+  camX = myState.x - canvas.width / 2;
+  camY = myState.y - canvas.height / 2;
+  camX = Math.max(0, Math.min(WORLD_W - canvas.width, camX));
+  camY = Math.max(0, Math.min(WORLD_H - canvas.height, camY));
+
+  // Collision check with opponent
+  const dx = myState.x - oppState.x;
+  const dy = myState.y - oppState.y;
+  const dist = Math.sqrt(dx*dx + dy*dy);
+  if (dist < 50) {
+    const relSpeed = Math.abs(myState.speed - oppState.speed);
+    if (relSpeed > 40) {
+      const dmg = Math.floor(relSpeed / 15);
+      myState.hp = Math.max(0, myState.hp - dmg * 0.5);
+      ws.send(JSON.stringify({ type: 'COLLISION', data: { damage: dmg, fromId: myPlayerId } }));
+      myState.speed *= -0.5;
+    }
+  }
+
+  // Checkpoint check (human only)
+  if (myRole === 'human') {
+    checkpoints.forEach((cp, i) => {
+      if (!cp.reached) {
+        const cdx = myState.x - cp.x, cdy = myState.y - cp.y;
+        if (Math.sqrt(cdx*cdx + cdy*cdy) < 60) {
+          cp.reached = true;
+          cpReached++;
+          document.getElementById(`cp-${i}`).classList.remove('active');
+          document.getElementById(`cp-${i}`).classList.add('done');
+          if (i + 1 < checkpoints.length) document.getElementById(`cp-${i+1}`).classList.add('active');
+          ws.send(JSON.stringify({ type: 'CHECKPOINT', checkpointId: i }));
+          if (cpReached >= TOTAL_CP) {
+            ws.send(JSON.stringify({ type: 'GAME_OVER', winner: 'human', reason: 'All checkpoints reached!' }));
+          }
+        }
+      }
+    });
+  }
+
+  // HP check
+  if (myState.hp <= 0 && gameStarted) {
+    gameStarted = false;
+    ws.send(JSON.stringify({ type: 'GAME_OVER', winner: myRole === 'human' ? 'police' : 'human', reason: myRole === 'human' ? 'Human car destroyed!' : 'Police car destroyed!' }));
+    endGame(myRole === 'human' ? 'police' : 'human', myRole === 'human' ? 'Human car destroyed!' : 'Police car destroyed!');
+  }
+
+  // Update HUD
+  document.getElementById('myHpVal').textContent = Math.ceil(myState.hp);
+  document.getElementById('myHpBar').style.width = myState.hp + '%';
+  document.getElementById('myHpBar').style.background = myState.hp > 60 ? '#44ff88' : myState.hp > 30 ? '#ffcc00' : '#ff4444';
+  document.getElementById('enemyHpVal').textContent = Math.ceil(oppState.hp);
+  document.getElementById('enemyHpBar').style.width = oppState.hp + '%';
+  document.getElementById('speed-val').textContent = Math.floor(Math.abs(myState.speed));
+}
+
+function updateOpponentState(state) {
+  oppState.x = state.x;
+  oppState.y = state.y;
+  oppState.angle = state.angle;
+  oppState.speed = state.speed;
+  oppState.hp = state.hp || oppState.hp;
+  oppState.boosting = state.boosting;
+}
+
+function handleCollision(data) {
+  if (data.fromId !== myPlayerId) {
+    myState.hp = Math.max(0, myState.hp - data.damage);
+  } else {
+    oppState.hp = Math.max(0, oppState.hp - data.damage);
+  }
+}
+
+function checkpointReached(id) { /* handled locally */ }
+function updateOpponentCheckpoint(id) { /* just for display if needed */ }
+
+// ============================================================
+// RENDER
+// ============================================================
+function render() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.save();
+  ctx.translate(-camX, -camY);
+
+  // Ground
+  ctx.fillStyle = '#1a2a1a';
+  ctx.fillRect(0, 0, WORLD_W, WORLD_H);
+
+  // Roads
+  roads.forEach(r => {
+    ctx.fillStyle = '#2a2a2a';
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+    // Lane markings
+    ctx.strokeStyle = '#444';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([20, 20]);
+    if (r.dir === 'h') {
+      ctx.beginPath(); ctx.moveTo(r.x, r.y + r.h/2); ctx.lineTo(r.x + r.w, r.y + r.h/2); ctx.stroke();
+    } else {
+      ctx.beginPath(); ctx.moveTo(r.x + r.w/2, r.y); ctx.lineTo(r.x + r.w/2, r.y + r.h); ctx.stroke();
+    }
+    ctx.setLineDash([]);
+  });
+
+  // Buildings
+  buildings.forEach(b => {
+    ctx.fillStyle = `hsl(${b.hue}, 15%, 25%)`;
+    ctx.fillRect(b.x, b.y, b.w, b.h);
+    ctx.fillStyle = `hsl(${b.hue}, 10%, 35%)`;
+    // Windows
+    for (let wx = b.x + 6; wx < b.x + b.w - 10; wx += 14) {
+      for (let wy = b.y + 6; wy < b.y + b.h - 10; wy += 14) {
+        ctx.fillStyle = Math.random() > 0.6 ? '#ffee88' : '#222';
+        ctx.fillRect(wx, wy, 8, 8);
+      }
+    }
+    ctx.strokeStyle = '#444';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(b.x, b.y, b.w, b.h);
+  });
+
+  // Trees
+  trees.forEach(t => {
+    ctx.fillStyle = '#1a4a1a';
+    ctx.beginPath();
+    ctx.arc(t.x, t.y, 10, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // Checkpoints (human only shows them)
+  checkpoints.forEach((cp, i) => {
+    if (cp.reached) return;
+    const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 400 + i);
+    ctx.save();
+    ctx.globalAlpha = 0.3 + pulse * 0.4;
+    ctx.strokeStyle = '#ffff44';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(cp.x, cp.y, 30 + pulse * 10, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#ffff44';
+    ctx.font = 'bold 16px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText(`CP ${i + 1}`, cp.x, cp.y + 6);
+    ctx.restore();
+  });
+
+  // Draw opponent car
+  drawCar(ctx, oppState.x, oppState.y, oppState.angle, myRole === 'human' ? 'police' : 'human', oppState.boosting);
+
+  // Draw my car
+  drawCar(ctx, myState.x, myState.y, myState.angle, myRole, myState.boosting);
+
+  ctx.restore();
+
+  // Minimap
+  drawMinimap();
+}
+
+function drawCar(ctx, x, y, angle, role, boosting) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+
+  const isHuman = role === 'human';
+  const bodyColor = isHuman ? '#2244ff' : '#222';
+  const accentColor = isHuman ? '#4488ff' : '#ff4444';
+
+  // Boost glow
+  if (boosting) {
+    ctx.shadowColor = '#ffcc00';
+    ctx.shadowBlur = 20;
+  }
+
+  // Car body
+  ctx.fillStyle = bodyColor;
+  ctx.beginPath();
+  ctx.roundRect(-CAR_W/2, -CAR_H/2, CAR_W, CAR_H, 6);
+  ctx.fill();
+
+  // Windshield
+  ctx.fillStyle = '#88bbff44';
+  ctx.fillRect(-CAR_W/2 + 4, -CAR_H/2 + 8, CAR_W - 8, 12);
+
+  // Roof
+  ctx.fillStyle = accentColor;
+  if (!isHuman) {
+    // Police light bar
+    ctx.fillStyle = '#ff0000';
+    ctx.fillRect(-CAR_W/2 + 2, -8, (CAR_W - 4) / 2, 5);
+    ctx.fillStyle = '#0000ff';
+    ctx.fillRect(0, -8, (CAR_W - 4) / 2, 5);
+  }
+
+  // Wheels
+  ctx.fillStyle = '#111';
+  [[-CAR_W/2 - 2, -CAR_H/2 + 6], [CAR_W/2 - 4, -CAR_H/2 + 6],
+   [-CAR_W/2 - 2, CAR_H/2 - 12], [CAR_W/2 - 4, CAR_H/2 - 12]].forEach(([wx, wy]) => {
+    ctx.fillRect(wx, wy, 6, 12);
+  });
+
+  // Boost exhaust
+  if (boosting) {
+    ctx.fillStyle = '#ffcc0088';
+    ctx.beginPath();
+    ctx.ellipse(0, CAR_H/2 + 10, 8, 16, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+function drawMinimap() {
+  const mm = document.getElementById('minimap');
+  const mc = mm.getContext('2d');
+  const scale = 100 / WORLD_W;
+
+  mc.fillStyle = '#111';
+  mc.fillRect(0, 0, 100, 100);
+
+  // Roads on minimap
+  mc.fillStyle = '#333';
+  roads.forEach(r => mc.fillRect(r.x * scale, r.y * scale, r.w * scale + 1, r.h * scale + 1));
+
+  // Checkpoints
+  checkpoints.forEach((cp, i) => {
+    if (cp.reached) return;
+    mc.fillStyle = '#ffff44';
+    mc.fillRect(cp.x * scale - 2, cp.y * scale - 2, 4, 4);
+  });
+
+  // Players
+  mc.fillStyle = myRole === 'human' ? '#4488ff' : '#ff4444';
+  mc.fillRect(myState.x * scale - 2, myState.y * scale - 2, 4, 4);
+
+  mc.fillStyle = myRole === 'human' ? '#ff4444' : '#4488ff';
+  mc.fillRect(oppState.x * scale - 2, oppState.y * scale - 2, 4, 4);
+
+  // Viewport rect
+  mc.strokeStyle = '#ffffff44';
+  mc.lineWidth = 0.5;
+  mc.strokeRect(camX * scale, camY * scale,
+    (canvas.width) * scale, (canvas.height) * scale);
+}
+
+// ============================================================
+// TOUCH CONTROLS
+// ============================================================
+const touchKeys = { up: false, down: false, left: false, right: false, boost: false };
+
+function touchStart(dir) {
+  touchKeys[dir] = true;
+  document.getElementById(`btn-${dir}`)?.classList.add('pressed');
+}
+function touchEnd(dir) {
+  touchKeys[dir] = false;
+  document.getElementById(`btn-${dir}`)?.classList.remove('pressed');
+}
+function activateBoost() {
+  if (boostCoolTimer <= 0 && boostTimer <= 0) {
+    boostTimer = BOOST_DUR;
+    boostCoolTimer = BOOST_COOLDOWN;
+    updateBoostBtn();
+  }
+}
+function updateBoostBtn() {
+  const btn = document.getElementById('boostBtn');
+  btn.classList.add('cooldown');
+  let t = BOOST_COOLDOWN;
+  const interval = setInterval(() => {
+    t -= 0.5;
+    if (t <= 0) { btn.classList.remove('cooldown'); clearInterval(interval); }
+  }, 500);
+}
+
+// ============================================================
+// VOICE CHAT (WebRTC)
+// ============================================================
+async function initVoiceChat() {
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    micEnabled = true;
+    setupPeerConnection();
+    if (myRole === 'human') {
+      // Human creates offer
+      setTimeout(createOffer, 1000);
+    }
+  } catch(e) {
+    console.log('Mic not available:', e);
+  }
+}
+
+function setupPeerConnection() {
+  peerConnection = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+  localStream.getTracks().forEach(t => peerConnection.addTrack(t, localStream));
+
+  peerConnection.ontrack = (e) => {
+    const audio = new Audio();
+    audio.srcObject = e.streams[0];
+    audio.play();
+  };
+
+  peerConnection.onicecandidate = (e) => {
+    if (e.candidate) {
+      ws.send(JSON.stringify({ type: 'WEBRTC_ICE', candidate: e.candidate }));
+    }
+  };
+}
+
+async function createOffer() {
+  if (!peerConnection) return;
+  const offer = await peerConnection.createOffer();
+  await peerConnection.setLocalDescription(offer);
+  ws.send(JSON.stringify({ type: 'WEBRTC_OFFER', offer }));
+}
+
+async function handleOffer(offer) {
+  if (!peerConnection) setupPeerConnection();
+  await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+  const answer = await peerConnection.createAnswer();
+  await peerConnection.setLocalDescription(answer);
+  ws.send(JSON.stringify({ type: 'WEBRTC_ANSWER', answer }));
+}
+
+async function handleAnswer(answer) {
+  await peerConnection?.setRemoteDescription(new RTCSessionDescription(answer));
+}
+
+async function handleIce(candidate) {
+  try { await peerConnection?.addIceCandidate(new RTCIceCandidate(candidate)); } catch(e) {}
+}
+
+function toggleMic() {
+  if (!localStream) return;
+  micEnabled = !micEnabled;
+  localStream.getAudioTracks().forEach(t => t.enabled = micEnabled);
+  const btn = document.getElementById('mic-btn');
+  btn.textContent = micEnabled ? '🎤' : '🔇';
+  btn.className = micEnabled ? 'active' : 'muted';
+}
+
+// ============================================================
+// GAME OVER
+// ============================================================
+function endGame(winner, reason) {
+  gameStarted = false;
+  const isWinner = (myRole === winner);
+  showOverlay(
+    isWinner ? '🏆 YOU WIN!' : '💥 YOU LOSE',
+    reason,
+    isWinner ? '#44ff88' : '#ff4444'
+  );
+}
+
+function showOverlay(title, sub, color) {
+  const overlay = document.getElementById('overlay');
+  document.getElementById('overlayTitle').textContent = title;
+  document.getElementById('overlayTitle').style.color = color || '#fff';
+  document.getElementById('overlaySub').textContent = sub || '';
+  overlay.style.display = 'flex';
+}
+
+function backToLobby() {
+  location.reload();
+}
+
+// ============================================================
+// WAIT FOR DOM
+// ============================================================
+window.addEventListener('load', () => {
+  // Prevent double-tap zoom on iOS
+  document.addEventListener('touchend', e => e.preventDefault(), { passive: false });
+});
+</script>
+</body>
+</html>
